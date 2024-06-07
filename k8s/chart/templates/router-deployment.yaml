@@ -23,15 +23,15 @@ spec:
           resources:
             requests:
               cpu: 1000m
-              memory: 1Gi
+              memory: 2Gi
           startupProbe:
             httpGet:
               path: /health
               port: 80
-            failureThreshold: 60
+            failureThreshold: 100
             periodSeconds: 10
             successThreshold: 1
-            timeoutSeconds: 10
+            timeoutSeconds: 3
           livenessProbe:
             httpGet:
               path: /health

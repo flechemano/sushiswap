@@ -7,8 +7,8 @@ import {
   WatchBlocksReturnType,
   encodeEventTopics,
 } from 'viem'
+import { Logger } from './Logger.js'
 import { repeatAsync } from './Utils.js'
-import { warnLog } from './WarnLog.js'
 
 export enum LogFilterType {
   Native = 0, // getFilterChanges - is not supported widely
@@ -129,9 +129,8 @@ export class LogFilter2 {
   start() {
     if (this.unWatchBlocks) return // have been started
     if (this.logType === LogFilterType.Native) {
-      this.client
-        .createEventFilter({ events: this.eventsAll })
-        .then((filtr) => {
+      this.client.createEventFilter({ events: this.eventsAll }).then(
+        (filtr) => {
           this.consoleLog(`LogFilter ${filtr.id} was created`)
           this.filter = filtr as unknown as Filter
           this.unWatchBlocks = this.client.watchBlockNumber({
@@ -150,17 +149,22 @@ export class LogFilter2 {
                   if (logsFiltered.length > 0) f.onNewLogs(logsFiltered)
                 })
               } catch (e) {
-                const message = e instanceof Error ? e.message : ''
-                warnLog(
+                Logger.error(
                   this.client.chain?.id,
-                  `LogFilter ${this.filter.id} error: ${message}`,
+                  `LogFilter ${this.filter.id} error`,
+                  e,
                 )
                 this.restart()
               }
               this.blockProcessing = false
             },
           })
-        })
+        },
+        (e) => {
+          Logger.error(this.client.chain?.id, `LogFilter creation error`, e)
+          this.start()
+        },
+      )
     } else {
       this.unWatchBlocks = this.client.watchBlocks({
         onBlock: async (block) => {
@@ -221,7 +225,7 @@ export class LogFilter2 {
   addBlock(_block: Block, isGoal: boolean) {
     const block = new BlockParams(_block)
     if (block.number === null || block.hash === null) {
-      warnLog(
+      Logger.error(
         this.client.chain?.id,
         `Incorrect block: number=${block.number} hash=${block.hash}`,
       )
@@ -232,8 +236,12 @@ export class LogFilter2 {
     if (!this.blockFrame.add(block.number, block.hash)) return
     this.blockHashMap.set(block.hash, block)
 
-    const backupPlan = () => {
-      warnLog(this.client.chain?.id, `getLog failed for block ${block.hash}`)
+    const backupPlan = (context?: unknown) => {
+      Logger.error(
+        this.client.chain?.id,
+        `getLog failed for block ${block.hash}`,
+        context,
+      )
       this.restart()
     }
 
@@ -281,7 +289,7 @@ export class LogFilter2 {
         )
         break
       default:
-        warnLog(
+        Logger.error(
           this.client.chain?.id,
           `Internal errror: Unknown Log Type: ${this.logType}`,
         )
@@ -294,10 +302,11 @@ export class LogFilter2 {
           this.client
             .getBlock({ blockHash: block.parentHash })
             .then((b) => this.addBlock(b, false)),
-        () =>
-          warnLog(
+        (e) =>
+          Logger.error(
             this.client.chain?.id,
-            'getBlock failed !!!!!!!!!!!!!!!!!!!!!!1',
+            'getBlock failed !!!!!!!!!!!!!!!!!!!!!!',
+            e,
           ),
       )
   }
@@ -330,7 +339,7 @@ export class LogFilter2 {
     for (let i = 0; i < downLine.length; ++i) {
       const l = this.logHashMap.get(downLine[i].hash || '')
       if (l === undefined) {
-        warnLog(this.client.chain?.id, 'Unexpected Error in LogFilter')
+        Logger.error(this.client.chain?.id, 'Unexpected Error in LogFilter')
         this.restart()
         return
       }

@@ -124,7 +124,7 @@ export class Chain implements Chain {
       this.explorers = [
         {
           name: 'ZetaChain Mainnet Explorer',
-          url: 'https://explorer.zetachain.com',
+          url: 'https://zetachain.blockscout.com',
           standard: 'EIP3091',
         },
       ]
@@ -136,6 +136,12 @@ export class Chain implements Chain {
           standard: 'EIP3091',
         },
       ]
+    } else if (data.chainId === ChainId.SKALE_EUROPA) {
+      this.name = 'Skale Europa'
+    } else if (data.chainId === ChainId.ROOTSTOCK) {
+      this.explorers?.sort((explorer) =>
+        explorer.name === 'blockscout' ? -1 : 1,
+      )
     }
   }
   getTxUrl(txHash: string): string {

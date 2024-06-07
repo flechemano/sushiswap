@@ -25,6 +25,7 @@ export const rpcUrls = {
   [ChainId.FILECOIN]: [
     `https://lb.drpc.org/ogrpc?network=filecoin&dkey=${drpcId}`,
   ],
+  // [ChainId.FILECOIN]: ['https://fil-mainnet-1.rpc.laconic.com/rpc/v1'],
   [ChainId.FUSE]: [`https://lb.drpc.org/ogrpc?network=fuse&dkey=${drpcId}`],
   [ChainId.GNOSIS]: [`https://lb.drpc.org/ogrpc?network=gnosis&dkey=${drpcId}`],
   [ChainId.HARMONY]: [
@@ -58,6 +59,8 @@ export const rpcUrls = {
   ],
   [ChainId.CRONOS]: [`https://lb.drpc.org/ogrpc?network=cronos&dkey=${drpcId}`],
   [ChainId.BLAST]: [`https://lb.drpc.org/ogrpc?network=blast&dkey=${drpcId}`],
+  [ChainId.SKALE_EUROPA]: ['https://mainnet.skalenodes.com/v1/elated-tan-skat'],
+  [ChainId.ROOTSTOCK]: ['https://public-node.rsk.co'],
 } as const
 
 export type RpcEnabledChainId = keyof typeof rpcUrls

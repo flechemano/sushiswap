@@ -37,6 +37,7 @@ gcloud config set project sushi-api-414412
 ```bash
 kubectl create secret generic sushi-api \
     --from-literal=DRPC_ID=XXX \
+    --from-literal=GETBLOCK_ID=XXX \
     --from-literal=SENTRY_DSN=XXX \
     --from-literal=SENTRY_ENVIRONMENT=XXX
 ```
@@ -87,4 +88,16 @@ kubectl rollout restart deployment/extractor-1
 
 ```bash
 kubectl scale --replicas=0 deployment --all && kubectl scale --replicas=0 statefulset --all
+```
+
+### Shell
+
+```bash
+kubectl exec --stdin --tty extractor-56-0 -- /bin/bash
+```
+
+### Copy
+
+```bash
+kubectl cp -n default extractor-56-0:/app/cache ./cache
 ```

@@ -1,11 +1,11 @@
 'use client'
 
-import { useSlippageTolerance } from '@sushiswap/hooks'
 import {
   useAccount,
-  useNetwork,
+  useChainId,
+  useConfig,
   useTokenWithCache,
-  watchNetwork,
+  watchAccount,
 } from '@sushiswap/wagmi'
 import { nanoid } from 'nanoid'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -20,9 +20,19 @@ import {
   useMemo,
   useState,
 } from 'react'
-import { useCrossChainTrade } from 'src/lib/swap/useCrossChainTrade/useCrossChainTrade'
+import { useSlippageTolerance } from 'src/lib/hooks/useSlippageTolerance'
+import { SushiXSwap2Adapter } from 'src/lib/swap/useCrossChainTrade/SushiXSwap2'
+import { useSquidCrossChainTrade } from 'src/lib/swap/useCrossChainTrade/useSquidCrossChainTrade'
+import { useStargateCrossChainTrade } from 'src/lib/swap/useCrossChainTrade/useStargateCrossChainTrade'
 import { ChainId } from 'sushi/chain'
-import { SushiXSwap2ChainId, isSushiXSwap2ChainId } from 'sushi/config'
+import {
+  SquidAdapterChainId,
+  StargateAdapterChainId,
+  defaultCurrency,
+  isSquidAdapterChainId,
+  isStargateAdapterChainId,
+  isSushiXSwap2ChainId,
+} from 'sushi/config'
 import { defaultQuoteCurrency } from 'sushi/config'
 import { Amount, Native, Type, tryParseAmount } from 'sushi/currency'
 import { ZERO } from 'sushi/math'
@@ -34,9 +44,12 @@ const getTokenAsString = (token: Type | string) =>
     : token.isNative
       ? 'NATIVE'
       : token.wrapped.address
+const getDefaultCurrency = (chainId: number) =>
+  getTokenAsString(defaultCurrency[chainId as keyof typeof defaultCurrency])
 const getQuoteCurrency = (chainId: number) =>
-  defaultQuoteCurrency[chainId as keyof typeof defaultQuoteCurrency].wrapped
-    .address
+  getTokenAsString(
+    defaultQuoteCurrency[chainId as keyof typeof defaultQuoteCurrency],
+  )
 
 interface State {
   mutate: {
@@ -59,6 +72,7 @@ interface State {
     swapAmountString: string
     swapAmount: Amount<Type> | undefined
     recipient: string | undefined
+    adapter: SushiXSwap2Adapter | undefined
   }
   isLoading: boolean
   isToken0Loading: boolean
@@ -81,8 +95,8 @@ const DerivedstateCrossChainSwapProvider: FC<
   DerivedStateCrossChainSwapProviderProps
 > = ({ children }) => {
   const { push } = useRouter()
+  const chainId = useChainId()
   const { address } = useAccount()
-  const { chain } = useNetwork()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [tradeId, setTradeId] = useState(nanoid())
@@ -95,10 +109,7 @@ const DerivedstateCrossChainSwapProvider: FC<
     if (!params.has('chainId0'))
       params.set(
         'chainId0',
-        (chain?.id && isSushiXSwap2ChainId(chain.id as ChainId)
-          ? chain.id
-          : ChainId.ETHEREUM
-        ).toString(),
+        (isSushiXSwap2ChainId(chainId) ? chainId : ChainId.ETHEREUM).toString(),
       )
     if (!params.has('chainId1'))
       params.set(
@@ -107,12 +118,13 @@ const DerivedstateCrossChainSwapProvider: FC<
           ? ChainId.ETHEREUM.toString()
           : ChainId.ARBITRUM.toString(),
       )
-    if (!params.has('token0')) params.set('token0', 'NATIVE')
+    if (!params.has('token0'))
+      params.set('token0', getDefaultCurrency(Number(params.get('chainId0'))))
     if (!params.has('token1'))
       params.set('token1', getQuoteCurrency(Number(params.get('chainId1'))))
 
     return params
-  }, [chain, searchParams])
+  }, [chainId, searchParams])
 
   // Get a new searchParams string by merging the current
   // searchParams with a provided key/value pair
@@ -152,8 +164,8 @@ const DerivedstateCrossChainSwapProvider: FC<
   }, [pathname, push, defaultedParams])
 
   // Update the URL with new from chainId
-  const setChainId0 = useCallback<{ (chainId: number): void }>(
-    (chainId) => {
+  const setChainId0 = useCallback(
+    (chainId: number) => {
       if (defaultedParams.get('chainId1') === chainId.toString()) {
         switchTokens()
       } else {
@@ -161,7 +173,7 @@ const DerivedstateCrossChainSwapProvider: FC<
           `${pathname}?${createQueryString([
             { name: 'swapAmount', value: null },
             { name: 'chainId0', value: chainId.toString() },
-            { name: 'token0', value: 'NATIVE' },
+            { name: 'token0', value: getDefaultCurrency(chainId0) },
           ])}`,
           { scroll: false },
         )
@@ -171,8 +183,8 @@ const DerivedstateCrossChainSwapProvider: FC<
   )
 
   // Update the URL with new to chainId
-  const setChainId1 = useCallback<{ (chainId: number): void }>(
-    (chainId) => {
+  const setChainId1 = useCallback(
+    (chainId: number) => {
       if (defaultedParams.get('chainId0') === chainId.toString()) {
         switchTokens()
       } else {
@@ -268,18 +280,29 @@ const DerivedstateCrossChainSwapProvider: FC<
     keepPreviousData: false,
   })
 
+  const adapter =
+    isStargateAdapterChainId(chainId0) && isStargateAdapterChainId(chainId1)
+      ? SushiXSwap2Adapter.Stargate
+      : isSquidAdapterChainId(chainId0) && isSquidAdapterChainId(chainId1)
+        ? SushiXSwap2Adapter.Squid
+        : undefined
+
+  const config = useConfig()
+
   useEffect(() => {
-    const unwatch = watchNetwork(({ chain }) => {
-      if (
-        !chain ||
-        chain.id === chainId0 ||
-        !isSushiXSwap2ChainId(chain.id as ChainId)
-      )
-        return
-      push(pathname, { scroll: false })
+    const unwatch = watchAccount(config, {
+      onChange: ({ chain }) => {
+        if (
+          !chain ||
+          chain.id === chainId0 ||
+          !isSushiXSwap2ChainId(chain.id as ChainId)
+        )
+          return
+        push(pathname, { scroll: false })
+      },
     })
     return () => unwatch()
-  }, [chainId0, pathname, push])
+  }, [config, chainId0, pathname, push])
 
   return (
     <DerivedStateCrossChainSwapContext.Provider
@@ -314,6 +337,7 @@ const DerivedstateCrossChainSwapProvider: FC<
             swapAmount: tryParseAmount(swapAmountString, _token0),
             token0: _token0,
             token1: _token1,
+            adapter,
           },
           isLoading: token0Loading || token1Loading,
           isToken0Loading: token0Loading,
@@ -336,6 +360,7 @@ const DerivedstateCrossChainSwapProvider: FC<
         token1,
         token1Loading,
         tradeId,
+        adapter,
       ])}
     >
       {children}
@@ -364,27 +389,42 @@ const useCrossChainSwapTrade = () => {
       swapAmount,
       token1,
       recipient,
+      adapter,
     },
   } = useDerivedStateCrossChainSwap()
+  const [slippagePercent] = useSlippageTolerance()
 
-  const [slippageTolerance] = useSlippageTolerance()
-
-  return useCrossChainTrade({
+  const stargateCrossChainTrade = useStargateCrossChainTrade({
     tradeId,
-    network0: chainId0 as SushiXSwap2ChainId,
-    network1: chainId1 as SushiXSwap2ChainId,
+    network0: chainId0 as StargateAdapterChainId,
+    network1: chainId1 as StargateAdapterChainId,
     token0,
     token1,
     amount: swapAmount,
-    slippagePercentage:
-      slippageTolerance === 'AUTO' ? '0.5' : slippageTolerance,
+    slippagePercentage: slippagePercent.toFixed(2),
     recipient: recipient as Address,
     enabled: Boolean(
-      isSushiXSwap2ChainId(chainId0) &&
-        isSushiXSwap2ChainId(chainId1) &&
-        swapAmount?.greaterThan(ZERO),
+      adapter === SushiXSwap2Adapter.Stargate && swapAmount?.greaterThan(ZERO),
     ),
   })
+
+  const squidCrossChainTrade = useSquidCrossChainTrade({
+    tradeId,
+    network0: chainId0 as SquidAdapterChainId,
+    network1: chainId1 as SquidAdapterChainId,
+    token0,
+    token1,
+    amount: swapAmount,
+    slippagePercentage: slippagePercent.toFixed(2),
+    recipient: recipient as Address,
+    enabled: Boolean(
+      adapter !== SushiXSwap2Adapter.Stargate && swapAmount?.greaterThan(ZERO),
+    ),
+  })
+
+  return adapter === SushiXSwap2Adapter.Stargate
+    ? stargateCrossChainTrade
+    : squidCrossChainTrade
 }
 
 export {

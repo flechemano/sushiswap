@@ -1,3 +1,4 @@
+import { Logger, safeSerialize } from '@sushiswap/extractor'
 import { Request, Response } from 'express'
 import { ChainId } from 'sushi/chain'
 import {
@@ -13,16 +14,18 @@ import {
   RouterLiquiditySource,
   makeAPI02Object,
 } from 'sushi/router'
+import { isAddressFast } from 'sushi/serializer'
+import { MultiRoute } from 'sushi/tines'
 import { Address } from 'viem'
 import { ExtractorClient } from '../../ExtractorClient.js'
+import swapRequestStatistics, {
+  ResponseRejectReason,
+} from '../../SwapRequestStatistics.js'
 import {
   CHAIN_ID,
   MAX_TIME_WITHOUT_NETWORK_UPDATE,
   POOL_FETCH_TIMEOUT,
 } from '../../config.js'
-import requestStatistics, {
-  ResponseRejectReason,
-} from '../../request-statistics.js'
 import { querySchema3_2 } from './schema.js'
 
 const nativeProvider = new NativeWrapProvider(
@@ -51,12 +54,17 @@ function handler(
   return (client: ExtractorClient) => {
     return async (req: Request, res: Response) => {
       res.setHeader('Cache-Control', 's-maxage=2, stale-while-revalidate=28')
+      let parsedData: any = undefined
+      let bestRoute: MultiRoute | undefined = undefined
       try {
-        const statistics = requestStatistics.requestProcessingStart()
+        const statistics = swapRequestStatistics.requestProcessingStart()
 
-        const parsed = qSchema.safeParse(req.query)
-        if (!parsed.success) {
-          requestStatistics.requestRejected(
+        let parsed: ReturnType<typeof querySchema3_2.safeParse> | undefined
+        try {
+          parsed = qSchema.safeParse(req.query)
+        } catch (_e) {}
+        if (!parsed || !parsed.success) {
+          swapRequestStatistics.requestRejected(
             ResponseRejectReason.WRONG_INPUT_PARAMS,
           )
           return res.status(422).send('Request parameters parsing error')
@@ -71,13 +79,29 @@ function handler(
           preferSushi,
           maxPriceImpact,
         } = parsed.data
+        parsedData = parsed.data
+
+        if (!isAddressFast(_tokenIn))
+          return res
+            .status(422)
+            .send(`Incorrect address for tokenIn: ${_tokenIn}`)
+        if (!isAddressFast(_tokenOut))
+          return res
+            .status(422)
+            .send(`Incorrect address for tokenOut: ${_tokenOut}`)
+        if (to !== undefined && !isAddressFast(to))
+          return res.status(422).send(`Incorrect address for 'to': ${to}`)
+        if (amount <= 0)
+          return res.status(422).send(`Amount must be positive: ${amount}`)
 
         if (
           client.lastUpdatedTimestamp + MAX_TIME_WITHOUT_NETWORK_UPDATE <
           Date.now()
         ) {
           console.log('no fresh data')
-          requestStatistics.requestRejected(ResponseRejectReason.NO_FRESH_DATA)
+          swapRequestStatistics.requestRejected(
+            ResponseRejectReason.NO_FRESH_DATA,
+          )
           return res.status(500).send(`Network ${CHAIN_ID} data timeout`)
         }
 
@@ -96,7 +120,7 @@ function handler(
         }
 
         if (!tokenIn || !tokenOut) {
-          requestStatistics.requestRejected(
+          swapRequestStatistics.requestRejected(
             ResponseRejectReason.UNSUPPORTED_TOKENS,
           )
           return res
@@ -111,7 +135,7 @@ function handler(
           .getCurrentPoolList()
           .forEach((p) => poolCodesMap.set(p.pool.uniqueID(), p))
 
-        const bestRoute = preferSushi
+        bestRoute = preferSushi
           ? Router.findSpecialRoute(
               poolCodesMap,
               CHAIN_ID as ChainId,
@@ -149,13 +173,23 @@ function handler(
 
         // we want to return { route, tx: { from, to, gas, gasPrice, value, input } }
 
-        requestStatistics.requestWasProcessed(statistics, tokensAreKnown)
+        swapRequestStatistics.requestWasProcessed(statistics, tokensAreKnown)
         return res.json(json)
       } catch (e) {
-        requestStatistics.requestRejected(
+        swapRequestStatistics.requestRejected(
           ResponseRejectReason.UNKNOWN_EXCEPTION,
         )
-        throw e
+
+        const data: any = {}
+        try {
+          data.error = e instanceof Error ? e.stack?.split('\n') : `${e}`
+          if (parsedData) data.params = parsedData
+          if (bestRoute) data.route = makeAPI02Object(bestRoute, undefined, '')
+        } catch (_e) {}
+        Logger.error(CHAIN_ID, 'Routing crashed', safeSerialize(data), false)
+
+        return res.status(500).send('Internal server error: Routing crashed')
+        //throw e
       }
     }
   }

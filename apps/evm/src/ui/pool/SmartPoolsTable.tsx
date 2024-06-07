@@ -214,8 +214,6 @@ const COLUMNS = [
     id: 'liquidityUSD',
     header: 'TVL',
     accessorFn: (row) => row.reserveUSD,
-    sortingFn: ({ original: rowA }, { original: rowB }) =>
-      Number(rowA.pool.liquidityUSD) - Number(rowB.pool.liquidityUSD),
     cell: ({ row: { original } }) => (
       <span className="flex gap-2">
         <span className="text-muted-foreground">
@@ -233,7 +231,7 @@ const COLUMNS = [
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Amount of liquidity staked in the vault.</p>
+              <p>Amount of liquidity deposited in the smart pool.</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -532,7 +530,7 @@ const COLUMNS = [
 ] satisfies ColumnDef<SteerVault, unknown>[]
 
 export const SmartPoolsTable = () => {
-  const { chainIds, protocols, farmsOnly } = usePoolFilters()
+  const { tokenSymbols, chainIds, protocols, farmsOnly } = usePoolFilters()
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'liquidityUSD', desc: true },
   ])
@@ -547,6 +545,7 @@ export const SmartPoolsTable = () => {
       orderBy: 'reserveUSD',
       orderDir: 'desc',
       onlyEnabled: true,
+      tokenSymbols,
     },
   })
 

@@ -4,7 +4,6 @@ import {
   STABLES,
   isExtractorSupportedChainId,
 } from 'sushi/config'
-import { getAddress } from 'viem'
 import z from 'zod'
 
 export const Currency = {
@@ -32,6 +31,7 @@ export const allPricesSchema = z.object({
     )
     .transform((chainId) => chainId as ExtractorSupportedChainId),
   currency: z.nativeEnum(Currency).default(Currency.USD),
+  oldPrices: z.optional(z.coerce.boolean()).default(false),
 })
 
 export const singleAddressSchema = z.object({
@@ -49,6 +49,8 @@ export const singleAddressSchema = z.object({
       },
     )
     .transform((chainId) => chainId as ExtractorSupportedChainId),
-  address: z.coerce.string().transform((address) => getAddress(address)),
+  address: z.coerce.string(),
   currency: z.nativeEnum(Currency).default(Currency.USD),
+  oldPrices: z.optional(z.coerce.boolean()).default(false),
+  reasoning: z.optional(z.coerce.boolean()).default(false),
 })

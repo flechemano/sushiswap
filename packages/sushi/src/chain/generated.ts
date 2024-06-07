@@ -29,63 +29,6 @@ export default [
     shortName: 'eth',
   },
   {
-    chainId: 3,
-    explorers: [
-      {
-        name: 'etherscan',
-        url: 'https://ropsten.etherscan.io',
-        standard: 'EIP3091',
-      },
-    ],
-    nativeCurrency: {
-      name: 'Ropsten Ether',
-      symbol: 'ETH',
-      decimals: 18,
-    },
-    name: 'Ropsten',
-    shortName: 'rop',
-  },
-  {
-    chainId: 4,
-    explorers: [
-      {
-        name: 'etherscan-rinkeby',
-        url: 'https://rinkeby.etherscan.io',
-        standard: 'EIP3091',
-      },
-    ],
-    nativeCurrency: {
-      name: 'Rinkeby Ether',
-      symbol: 'ETH',
-      decimals: 18,
-    },
-    name: 'Rinkeby',
-    shortName: 'rin',
-  },
-  {
-    chainId: 5,
-    explorers: [
-      {
-        name: 'etherscan-goerli',
-        url: 'https://goerli.etherscan.io',
-        standard: 'EIP3091',
-      },
-      {
-        name: 'blockscout-goerli',
-        url: 'https://eth-goerli.blockscout.com',
-        icon: 'blockscout',
-        standard: 'EIP3091',
-      },
-    ],
-    nativeCurrency: {
-      name: 'Goerli Ether',
-      symbol: 'ETH',
-      decimals: 18,
-    },
-    name: 'Goerli',
-    shortName: 'gor',
-  },
-  {
     chainId: 10,
     explorers: [
       {
@@ -132,6 +75,29 @@ export default [
     shortName: 'cro',
   },
   {
+    chainId: 30,
+    explorers: [
+      {
+        name: 'Rootstock Explorer',
+        url: 'https://explorer.rsk.co',
+        standard: 'EIP3091',
+      },
+      {
+        name: 'blockscout',
+        url: 'https://rootstock.blockscout.com',
+        icon: 'blockscout',
+        standard: 'EIP3091',
+      },
+    ],
+    nativeCurrency: {
+      name: 'Smart Bitcoin',
+      symbol: 'RBTC',
+      decimals: 18,
+    },
+    name: 'Rootstock Mainnet',
+    shortName: 'rsk',
+  },
+  {
     chainId: 40,
     explorers: [
       {
@@ -147,23 +113,6 @@ export default [
     },
     name: 'Telos EVM Mainnet',
     shortName: 'TelosEVM',
-  },
-  {
-    chainId: 42,
-    explorers: [
-      {
-        name: 'Blockscout',
-        url: 'https://explorer.execution.mainnet.lukso.network',
-        standard: 'EIP3091',
-      },
-    ],
-    nativeCurrency: {
-      name: 'LUKSO',
-      symbol: 'LYX',
-      decimals: 18,
-    },
-    name: 'LUKSO Mainnet',
-    shortName: 'lukso',
   },
   {
     chainId: 56,
@@ -187,23 +136,6 @@ export default [
     },
     name: 'BNB Smart Chain Mainnet',
     shortName: 'bnb',
-  },
-  {
-    chainId: 65,
-    explorers: [
-      {
-        name: 'OKLink',
-        url: 'https://www.oklink.com/okexchain-test',
-        standard: 'EIP3091',
-      },
-    ],
-    nativeCurrency: {
-      name: 'OKExChain Global Utility Token in testnet',
-      symbol: 'OKT',
-      decimals: 18,
-    },
-    name: 'OKExChain Testnet',
-    shortName: 'tokt',
   },
   {
     chainId: 66,
@@ -385,26 +317,11 @@ export default [
     shortName: 'ftm',
   },
   {
-    chainId: 256,
-    nativeCurrency: {
-      name: 'Huobi ECO Chain Test Native Token',
-      symbol: 'htt',
-      decimals: 18,
-    },
-    name: 'Huobi ECO Chain Testnet',
-    shortName: 'hecot',
-  },
-  {
     chainId: 288,
     explorers: [
       {
         name: 'Bobascan',
         url: 'https://bobascan.com',
-        standard: 'none',
-      },
-      {
-        name: 'Blockscout',
-        url: 'https://blockexplorer.boba.network',
         standard: 'none',
       },
     ],
@@ -846,7 +763,7 @@ export default [
     explorers: [
       {
         name: 'Boba BNB block explorer',
-        url: 'https://blockexplorer.bnb.boba.network',
+        url: 'https://bobascan.com',
         standard: 'none',
       },
     ],
@@ -925,7 +842,20 @@ export default [
   },
   {
     chainId: 81457,
-    explorers: [],
+    explorers: [
+      {
+        name: 'Blastscan',
+        url: 'https://blastscan.io',
+        icon: 'blast',
+        standard: 'EIP3091',
+      },
+      {
+        name: 'Blast Explorer',
+        url: 'https://blastexplorer.io',
+        icon: 'blast',
+        standard: 'EIP3091',
+      },
+    ],
     nativeCurrency: {
       name: 'Ether',
       symbol: 'ETH',
@@ -939,16 +869,37 @@ export default [
     },
   },
   {
+    chainId: 421614,
+    explorers: [
+      {
+        name: 'Arbitrum Sepolia Rollup Testnet Explorer',
+        url: 'https://sepolia-explorer.arbitrum.io',
+        standard: 'EIP3091',
+      },
+    ],
+    nativeCurrency: {
+      name: 'Sepolia Ether',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    name: 'Arbitrum Sepolia',
+    shortName: 'arb-sep',
+    parent: {
+      type: 'L2',
+      chain: 'eip155-11155111',
+      bridges: [
+        {
+          url: 'https://bridge.arbitrum.io',
+        },
+      ],
+    },
+  },
+  {
     chainId: 534352,
     explorers: [
       {
         name: 'Scrollscan',
         url: 'https://scrollscan.com',
-        standard: 'EIP3091',
-      },
-      {
-        name: 'Blockscout',
-        url: 'https://blockscout.scroll.io',
         standard: 'EIP3091',
       },
     ],
@@ -970,6 +921,28 @@ export default [
     },
   },
   {
+    chainId: 11155111,
+    explorers: [
+      {
+        name: 'etherscan-sepolia',
+        url: 'https://sepolia.etherscan.io',
+        standard: 'EIP3091',
+      },
+      {
+        name: 'otterscan-sepolia',
+        url: 'https://sepolia.otterscan.io',
+        standard: 'EIP3091',
+      },
+    ],
+    nativeCurrency: {
+      name: 'Sepolia Ether',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    name: 'Sepolia',
+    shortName: 'sep',
+  },
+  {
     chainId: 1666600000,
     explorers: [
       {
@@ -987,21 +960,30 @@ export default [
     shortName: 'hmy-s0',
   },
   {
-    chainId: 1666700000,
+    chainId: 2046399126,
     explorers: [
       {
-        name: 'Harmony Testnet Block Explorer',
-        url: 'https://explorer.testnet.harmony.one',
+        name: 'Blockscout',
+        url: 'https://elated-tan-skat.explorer.mainnet.skalenodes.com',
         standard: 'EIP3091',
       },
     ],
     nativeCurrency: {
-      name: 'ONE',
-      symbol: 'ONE',
+      name: 'sFUEL',
+      symbol: 'sFUEL',
       decimals: 18,
     },
-    name: 'Harmony Testnet Shard 0',
-    shortName: 'hmy-b-s0',
+    name: 'SKALE Europa Hub',
+    shortName: 'europa',
+    parent: {
+      type: 'L2',
+      chain: 'eip155-1',
+      bridges: [
+        {
+          url: 'https://ruby.exchange/bridge.html',
+        },
+      ],
+    },
   },
   {
     chainId: 11297108109,

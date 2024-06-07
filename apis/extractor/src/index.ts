@@ -1,11 +1,13 @@
 import 'dotenv/config'
 
 import * as Sentry from '@sentry/node'
+import { Logger, LogsMessageLevel } from '@sushiswap/extractor'
 import express, { type Express, type Response } from 'express'
 import { CHAIN_ID, PORT, SENTRY_DSN, SENTRY_ENVIRONMENT } from './config.js'
 import { CPUUsageStatistics } from './cpu-usage-statistics.js'
 import extractor from './extractor.js'
 import poolCodesBetween from './handlers/pool-codes-between/index.js'
+import poolCodesBin from './handlers/pool-codes-bin/index.js'
 import poolCodesForToken from './handlers/pool-codes-for-token/index.js'
 import poolCodes from './handlers/pool-codes/index.js'
 import requestedPairs from './handlers/requested-pairs/index.js'
@@ -15,11 +17,13 @@ import requestStatistics from './request-statistics.js'
 const app: Express = express()
 
 Sentry.init({
+  sampleRate: 1,
   dsn: SENTRY_DSN,
   environment: SENTRY_ENVIRONMENT,
   integrations: [
     // enable HTTP calls tracing
     new Sentry.Integrations.Http({
+      breadcrumbs: true,
       tracing: true,
     }),
     // enable Express.js middleware tracing
@@ -28,8 +32,35 @@ Sentry.init({
     }),
   ],
   // Performance Monitoring
-  tracesSampleRate: 0.1, // Capture 10% of the transactions, reduce in production!,
+  enableTracing: true,
+  tracesSampleRate: 1,
+  //debug: process.env['SENTRY_ENVIRONMENT'] !== 'production',
 })
+
+Logger.setLogsExternalHandler(
+  (
+    msg: string,
+    level: LogsMessageLevel,
+    context?: string,
+    trace_id?: string,
+  ) => {
+    Sentry.captureMessage(
+      msg,
+      context === undefined
+        ? level
+        : {
+            level,
+            contexts: {
+              trace: {
+                data: { context },
+                trace_id: trace_id ?? '0',
+                span_id: '0',
+              },
+            },
+          },
+    )
+  },
+)
 
 const cpuUsageStatistics = new CPUUsageStatistics(60_000)
 cpuUsageStatistics.start()
@@ -50,6 +81,7 @@ app.get('/health', (_, res: Response) => {
 
 app.get('/token/:chainId/:address', token)
 app.get('/pool-codes/:chainId', poolCodes)
+app.get('/pool-codes-bin/:chainId', poolCodesBin)
 app.get('/pool-codes-for-token/:chainId/:address', poolCodesForToken)
 app.get('/pool-codes-between/:chainId/:addr0/:addr1', poolCodesBetween)
 app.get('/requested-pairs/:chainId', requestedPairs)

@@ -1,3 +1,4 @@
+import { Address } from 'viem'
 import {
   Graph,
   MultiRoute,
@@ -222,6 +223,7 @@ export function calcTokenPrices(
   pools: RPool[],
   baseToken: RToken,
   minPriceLiquidity = 0,
+  trustedForPricingTokens?: RToken[],
   priceLogging = false,
 ): Map<RToken, number> {
   setTokenId(baseToken)
@@ -231,6 +233,7 @@ export function calcTokenPrices(
     baseToken,
     0,
     minPriceLiquidity,
+    trustedForPricingTokens,
     priceLogging,
   )
   const res = new Map<RToken, number>()
@@ -240,10 +243,32 @@ export function calcTokenPrices(
   return res
 }
 
+export function getTokenPriceReasoning(
+  pools: RPool[],
+  baseToken: RToken,
+  token: Address,
+  minPriceLiquidity = 0,
+  trustedForPricingTokens?: RToken[],
+  priceLogging = false,
+): string[] {
+  setTokenId(baseToken)
+  const g = new Graph(
+    pools,
+    baseToken,
+    baseToken,
+    0,
+    minPriceLiquidity,
+    trustedForPricingTokens,
+    priceLogging,
+  )
+  return g.getPriceReasoning(baseToken, 1, token, minPriceLiquidity)
+}
+
 export function calcTokenAddressPrices(
   pools: RPool[],
   baseToken: RToken,
   minPriceLiquidity = 0,
+  trustedForPricingTokens?: RToken[],
   priceLogging = false,
 ): Record<string, number> {
   setTokenId(baseToken)
@@ -253,14 +278,14 @@ export function calcTokenAddressPrices(
     baseToken,
     0,
     minPriceLiquidity,
+    trustedForPricingTokens,
     priceLogging,
   )
   const res: Record<string, number> = {}
   g.vertices.forEach((v) => {
     if (v.price !== 0)
-      res[v.token.address] = Number(
-        (v.price / 10 ** (baseToken.decimals - v.token.decimals)).toFixed(18),
-      )
+      res[v.token.address] =
+        v.price / 10 ** (baseToken.decimals - v.token.decimals)
   })
   return res
 }

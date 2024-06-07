@@ -1,7 +1,11 @@
 'use client'
 
 import { CogIcon } from '@heroicons/react/24/outline'
-import { useDebounce } from '@sushiswap/hooks'
+import {
+  SlippageToleranceStorageKey,
+  TTLStorageKey,
+  useDebounce,
+} from '@sushiswap/hooks'
 import {
   Card,
   CardContent,
@@ -30,28 +34,24 @@ import { Button } from '@sushiswap/ui/components/button'
 import { createErrorToast, createToast } from '@sushiswap/ui/components/toast'
 import {
   ConcentratedLiquidityPosition,
-  getV3NonFungiblePositionManagerConractConfig,
-  useNetwork,
-  usePrepareSendTransaction,
+  getDefaultTTL,
+  getV3NonFungiblePositionManagerContractConfig,
+  useAccount,
+  useCall,
+  usePublicClient,
   useSendTransaction,
   useTransactionDeadline,
-  useWaitForTransaction,
+  useWaitForTransactionReceipt,
 } from '@sushiswap/wagmi'
-import {
-  SendTransactionResult,
-  waitForTransaction,
-} from '@sushiswap/wagmi/actions'
-import { UsePrepareSendTransactionConfig } from '@sushiswap/wagmi/hooks/useSendTransaction'
 import { Checker } from '@sushiswap/wagmi/systems'
 import React, { FC, useCallback, useMemo, useState } from 'react'
-import { unwrapToken } from 'src/lib/functions'
 import { useSlippageTolerance } from 'src/lib/hooks/useSlippageTolerance'
 import { Chain } from 'sushi/chain'
 import { SushiSwapV3ChainId, isSushiSwapV3ChainId } from 'sushi/config'
-import { Amount, Type } from 'sushi/currency'
+import { Amount, Type, unwrapToken } from 'sushi/currency'
 import { Percent, ZERO } from 'sushi/math'
 import { NonfungiblePositionManager, Position } from 'sushi/pool'
-import { Hex, UserRejectedRequestError } from 'viem'
+import { Hex, SendTransactionReturnType, UserRejectedRequestError } from 'viem'
 import { useTokenAmountDollarValues } from '../../lib/hooks'
 
 interface ConcentratedLiquidityRemoveWidget {
@@ -75,10 +75,16 @@ export const ConcentratedLiquidityRemoveWidget: FC<
   position,
   positionDetails,
 }) => {
-  const { chain } = useNetwork()
+  const { chain } = useAccount()
+  const client = usePublicClient()
   const [value, setValue] = useState<string>('0')
-  const [slippageTolerance] = useSlippageTolerance('removeLiquidity')
-  const { data: deadline } = useTransactionDeadline({ chainId })
+  const [slippageTolerance] = useSlippageTolerance(
+    SlippageToleranceStorageKey.RemoveLiquidity,
+  )
+  const { data: deadline } = useTransactionDeadline({
+    storageKey: TTLStorageKey.RemoveLiquidity,
+    chainId,
+  })
   const debouncedValue = useDebounce(value, 300)
 
   const _onChange = useCallback(
@@ -91,20 +97,19 @@ export const ConcentratedLiquidityRemoveWidget: FC<
     [onChange],
   )
 
-  const onSettled = useCallback(
-    (data: SendTransactionResult | undefined, error: Error | null) => {
-      if (error instanceof UserRejectedRequestError) {
-        createErrorToast(error?.message, true)
-      }
-      if (!data || !position) return
+  const onSuccess = useCallback(
+    (hash: SendTransactionReturnType) => {
+      setValue('0')
+
+      if (!position) return
 
       const ts = new Date().getTime()
       void createToast({
         account,
         type: 'burn',
         chainId,
-        txHash: data.hash,
-        promise: waitForTransaction({ hash: data.hash }),
+        txHash: hash,
+        promise: client.waitForTransactionReceipt({ hash }),
         summary: {
           pending: `Removing liquidity from the ${position.amount0.currency.symbol}/${position.amount1.currency.symbol} pair`,
           completed: `Successfully removed liquidity from the ${position.amount0.currency.symbol}/${position.amount1.currency.symbol} pair`,
@@ -114,8 +119,14 @@ export const ConcentratedLiquidityRemoveWidget: FC<
         groupTimestamp: ts,
       })
     },
-    [position, account, chainId],
+    [client, position, account, chainId],
   )
+
+  const onError = useCallback((e: Error) => {
+    if (e instanceof UserRejectedRequestError) {
+      createErrorToast(e.message, true)
+    }
+  }, [])
 
   const [feeValue0, feeValue1] = useMemo(() => {
     if (positionDetails && token0 && token1) {
@@ -132,7 +143,7 @@ export const ConcentratedLiquidityRemoveWidget: FC<
     return [undefined, undefined]
   }, [positionDetails, token0, token1])
 
-  const prepare = useMemo<UsePrepareSendTransactionConfig>(() => {
+  const prepare = useMemo(() => {
     const liquidityPercentage = new Percent(debouncedValue, 100)
     const discountedAmount0 = position
       ? liquidityPercentage.multiply(position.amount0.quotient).quotient
@@ -192,7 +203,7 @@ export const ConcentratedLiquidityRemoveWidget: FC<
       })
 
       return {
-        to: getV3NonFungiblePositionManagerConractConfig(chainId).address,
+        to: getV3NonFungiblePositionManagerContractConfig(chainId).address,
         data: calldata as Hex,
         value: BigInt(_value),
       }
@@ -211,27 +222,40 @@ export const ConcentratedLiquidityRemoveWidget: FC<
     debouncedValue,
   ])
 
-  const { config, isError } = usePrepareSendTransaction({
+  const { isError: isSimulationError } = useCall({
     ...prepare,
     chainId,
-    enabled: +value > 0 && chainId === chain?.id,
+    query: {
+      enabled: +value > 0 && chainId === chain?.id,
+    },
   })
 
   const {
     sendTransactionAsync,
     isLoading: isWritePending,
-    data,
+    data: hash,
   } = useSendTransaction({
-    ...config,
-    onSettled,
-    onSuccess: () => {
-      setValue('0')
+    mutation: {
+      onSuccess,
+      onError,
     },
   })
 
-  const { status } = useWaitForTransaction({
+  const send = useMemo(() => {
+    if (!prepare || isSimulationError) return undefined
+
+    return async (confirm: () => void) => {
+      try {
+        await sendTransactionAsync(prepare)
+
+        confirm()
+      } catch {}
+    }
+  }, [isSimulationError, prepare, sendTransactionAsync])
+
+  const { status } = useWaitForTransactionReceipt({
     chainId: chainId,
-    hash: data?.hash,
+    hash: hash,
   })
 
   const positionClosed = !position || position.liquidity === 0n
@@ -319,12 +343,19 @@ export const ConcentratedLiquidityRemoveWidget: FC<
                         <SettingsOverlay
                           options={{
                             slippageTolerance: {
-                              storageKey: 'removeLiquidity',
-                              defaultValue: '0.5',
+                              storageKey:
+                                SlippageToleranceStorageKey.RemoveLiquidity,
                               title: 'Remove Liquidity Slippage',
                             },
+                            transactionDeadline: {
+                              storageKey: TTLStorageKey.RemoveLiquidity,
+                              defaultValue: getDefaultTTL(chainId).toString(),
+                            },
                           }}
-                          modules={[SettingsModule.SlippageTolerance]}
+                          modules={[
+                            SettingsModule.SlippageTolerance,
+                            SettingsModule.TransactionDeadline,
+                          ]}
                         >
                           <IconButton
                             size="sm"
@@ -397,12 +428,37 @@ export const ConcentratedLiquidityRemoveWidget: FC<
               </CardFooter>
             </div>
             <DialogContent>
-              <DialogHeader>
-                <DialogTitle>
-                  {token0?.symbol}/{token1?.symbol}
-                </DialogTitle>
-                <DialogDescription>Remove Liquidity</DialogDescription>
-              </DialogHeader>
+              <div className="flex justify-between">
+                <DialogHeader>
+                  <DialogTitle>
+                    {token0?.symbol}/{token1?.symbol}
+                  </DialogTitle>
+                  <DialogDescription>Remove Liquidity</DialogDescription>
+                </DialogHeader>
+                <SettingsOverlay
+                  options={{
+                    slippageTolerance: {
+                      storageKey: SlippageToleranceStorageKey.RemoveLiquidity,
+                      title: 'Remove Liquidity Slippage',
+                    },
+                    transactionDeadline: {
+                      storageKey: TTLStorageKey.RemoveLiquidity,
+                      defaultValue: getDefaultTTL(chainId).toString(),
+                    },
+                  }}
+                  modules={[
+                    SettingsModule.SlippageTolerance,
+                    SettingsModule.TransactionDeadline,
+                  ]}
+                >
+                  <IconButton
+                    name="Settings"
+                    icon={CogIcon}
+                    variant="secondary"
+                    className="mr-12"
+                  />
+                </SettingsOverlay>
+              </div>
               <div className="flex flex-col gap-4">
                 <List className="!pt-0">
                   <List.Control>
@@ -487,13 +543,13 @@ export const ConcentratedLiquidityRemoveWidget: FC<
                 <Button
                   size="xl"
                   fullWidth
-                  loading={!sendTransactionAsync || isWritePending}
-                  onClick={() => sendTransactionAsync?.().then(() => confirm())}
-                  disabled={isError}
+                  loading={!send || isWritePending}
+                  onClick={() => send?.(confirm)}
+                  disabled={isSimulationError}
                   testId="confirm-remove-liquidity"
                   type="button"
                 >
-                  {isError ? (
+                  {isSimulationError ? (
                     'Shoot! Something went wrong :('
                   ) : isWritePending ? (
                     <Dots>Confirm Remove</Dots>
@@ -510,8 +566,8 @@ export const ConcentratedLiquidityRemoveWidget: FC<
         chainId={chainId}
         status={status}
         testId="make-another-swap"
-        buttonText="Make another swap"
-        txHash={data?.hash}
+        buttonText="Close"
+        txHash={hash}
         successMessage={`You successfully removed liquidity from your ${position?.amount0.currency.symbol}/${position?.amount1.currency.symbol} position`}
       />
     </DialogProvider>

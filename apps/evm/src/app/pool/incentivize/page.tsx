@@ -28,14 +28,12 @@ import {
   typographyVariants,
 } from '@sushiswap/ui'
 import {
-  Address,
-  readContract,
+  AngleConditionsState,
+  useAcceptAngleConditions,
   useAccount,
   useConcentratedLiquidityPool,
-  useSignMessage,
-  useWaitForTransaction,
+  useWaitForTransactionReceipt,
 } from '@sushiswap/wagmi'
-import { DistributionCreator } from '@sushiswap/wagmi'
 import { useIncentivizePoolWithRewards } from '@sushiswap/wagmi'
 import { Web3Input } from '@sushiswap/wagmi/components/web3-input'
 import { Checker } from '@sushiswap/wagmi/systems'
@@ -44,12 +42,16 @@ import {
   withCheckerRoot,
 } from '@sushiswap/wagmi/systems/Checker/Provider'
 import { format } from 'date-fns'
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Chain } from 'sushi/chain'
-import { ANGLE_ENABLED_NETWORKS, SushiSwapV3ChainId } from 'sushi/config'
+import {
+  ANGLE_ENABLED_NETWORKS,
+  SushiSwapV3ChainId,
+  isWNativeSupported,
+} from 'sushi/config'
 import { Token, Type, tryParseAmount } from 'sushi/currency'
 import { SushiSwapV3Pool } from 'sushi/pool'
-import { zeroAddress } from 'viem'
+import { Address, zeroAddress } from 'viem'
 import { ConcentratedLiquidityProvider } from '../../../ui/pool/ConcentratedLiquidityProvider'
 import {
   ConcentratedLiquidityURLStateProvider,
@@ -122,7 +124,7 @@ const Incentivize = withCheckerRoot(() => {
       : undefined
   }, [startDate, endDate])
 
-  const { data: signature, signMessage } = useSignMessage()
+  const [angleConditionsState, { write }] = useAcceptAngleConditions()
 
   const { data: angleRewardTokens, isLoading: angleRewardTokensLoading } =
     useAngleRewardTokens({ chainId })
@@ -136,12 +138,12 @@ const Incentivize = withCheckerRoot(() => {
   }, [angleRewardTokens, epochs, rewardToken])
 
   const {
-    prepare: { isError },
-    write: { writeAsync, isLoading: isIncentivizeLoading, data },
+    simulation: { isError, data: simulationData },
+    write: { writeContractAsync, isLoading: isIncentivizeLoading, data },
   } = useIncentivizePoolWithRewards({
     account: address,
     args:
-      amount[0] && v3Address && rewardToken && epochs && startDate && signature
+      amount[0] && v3Address && rewardToken && epochs && startDate
         ? [
             {
               uniV3Pool: v3Address as Address,
@@ -163,26 +165,21 @@ const Incentivize = withCheckerRoot(() => {
               additionalData:
                 '0x0000000000000000000000000000000000000000000000000000000000000000',
             },
-            signature,
           ]
         : undefined,
     chainId: chainId as SushiSwapV3ChainId,
     enabled: Boolean(
-      amount[0] && v3Address && rewardToken && epochs && startDate && approved,
+      amount[0] &&
+        v3Address &&
+        rewardToken &&
+        epochs &&
+        startDate &&
+        approved &&
+        angleConditionsState === AngleConditionsState.ACCEPTED,
     ),
   })
 
-  const sign = useCallback(async () => {
-    const message = await readContract({
-      abi: DistributionCreator,
-      address: '0x8BB4C975Ff3c250e0ceEA271728547f3802B36Fd',
-      functionName: 'message',
-    })
-
-    signMessage({ message })
-  }, [signMessage])
-
-  const { status } = useWaitForTransaction({ chainId, hash: data?.hash })
+  const { status } = useWaitForTransactionReceipt({ chainId, hash: data })
 
   const rewardTokens = useMemo(
     () =>
@@ -215,6 +212,7 @@ const Incentivize = withCheckerRoot(() => {
           token1={token1}
           setToken0={setToken0}
           setToken1={setToken1}
+          includeNative={isWNativeSupported(chainId)}
         />
         <SelectFeeConcentratedWidget
           title="What is the fee tier for this pool?"
@@ -496,6 +494,20 @@ const Incentivize = withCheckerRoot(() => {
             />
           </div>
           <Separator className="!my-10" />
+          <p
+            className={typographyVariants({
+              variant: 'muted',
+              className: 'text-sm',
+            })}
+          >
+            In order to incentivize a pool, you must review and agree to{' '}
+            <Button variant="link" asChild>
+              <LinkExternal href="https://docs.angle.money/merkl/incentivizor-tc">
+                Merkl's Terms & Conditions
+              </LinkExternal>
+            </Button>
+            .
+          </p>
           <Checker.Connect>
             <Checker.Network chainId={chainId}>
               <Checker.Guard guardWhen={!pool} guardText="Pool not found">
@@ -518,9 +530,21 @@ const Incentivize = withCheckerRoot(() => {
                           contract="0x8BB4C975Ff3c250e0ceEA271728547f3802B36Fd"
                         >
                           <Checker.Custom
-                            showChildren={Boolean(signature)}
-                            onClick={sign}
+                            showChildren={
+                              angleConditionsState ===
+                              AngleConditionsState.ACCEPTED
+                            }
+                            onClick={write!}
                             buttonText="Sign the terms & conditions"
+                            loading={[
+                              AngleConditionsState.PENDING,
+                              AngleConditionsState.LOADING,
+                              AngleConditionsState.UNKNOWN,
+                            ].includes(angleConditionsState)}
+                            disabled={
+                              angleConditionsState !==
+                                AngleConditionsState.NOT_ACCEPTED || !write
+                            }
                           >
                             <Checker.Success tag={APPROVE_TAG}>
                               <DialogReview>
@@ -646,9 +670,21 @@ const Incentivize = withCheckerRoot(() => {
                                           loading={
                                             isIncentivizeLoading && !isError
                                           }
-                                          onClick={() =>
-                                            writeAsync?.().then(() => confirm())
-                                          }
+                                          onClick={async () => {
+                                            if (
+                                              !writeContractAsync ||
+                                              !simulationData
+                                            ) {
+                                              return
+                                            }
+
+                                            try {
+                                              await writeContractAsync(
+                                                simulationData.request,
+                                              )
+                                              confirm()
+                                            } catch {}
+                                          }}
                                           disabled={
                                             isIncentivizeLoading || isError
                                           }
@@ -687,7 +723,7 @@ const Incentivize = withCheckerRoot(() => {
           successMessage={`Successfully incentivized the ${token0.symbol}/${token1.symbol} V3 pool`}
           buttonText="Go to pool"
           buttonLink={`/pools/${pool.chainId}:${v3Address}?activeTab=myPositions`}
-          txHash={data?.hash}
+          txHash={data}
         />
       ) : null}
     </DialogProvider>

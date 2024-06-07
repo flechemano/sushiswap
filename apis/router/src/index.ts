@@ -2,25 +2,30 @@ import 'dotenv/config'
 
 import process from 'node:process'
 import * as Sentry from '@sentry/node'
+import { Logger, LogsMessageLevel } from '@sushiswap/extractor'
 import cors from 'cors'
 import express, { type Express, type Response } from 'express'
 import { ChainId } from 'sushi/chain'
 import { ExtractorClient } from './ExtractorClient.js'
+import swapRequestStatistics from './SwapRequestStatistics.js'
 import {
   CHAIN_ID,
   EXTRACTOR_SERVER,
   POOL_UPDATE_INTERVAL,
   PORT,
   REQUESTED_PAIRS_UPDATE_INTERVAL,
+  ROUTER_CONFIG,
   SENTRY_DSN,
   SENTRY_ENVIRONMENT,
 } from './config.js'
 import { CPUUsageStatistics } from './cpu-usage-statistics.js'
 import { priceByAddressHandler, pricesHandler } from './handlers/price/index.js'
 import { swapV3_2, swapV4 } from './handlers/swap/index.js'
+import { swapV4_2 } from './handlers/swap2/index.js'
 import tokenHandler from './handlers/token/index.js'
 import { updatePrices } from './prices.js'
-import requestStatistics from './request-statistics.js'
+
+export let extractorClient: ExtractorClient | undefined
 
 async function start() {
   const app: Express = express()
@@ -31,17 +36,24 @@ async function start() {
     POOL_UPDATE_INTERVAL(CHAIN_ID as ChainId),
     REQUESTED_PAIRS_UPDATE_INTERVAL(CHAIN_ID as ChainId),
   )
-  updatePrices(client)
+  extractorClient = client
+  if (
+    ROUTER_CONFIG[CHAIN_ID]?.['priceIncrementalMode'] === false ||
+    ROUTER_CONFIG[CHAIN_ID]?.['checkPricesIncrementalModeCorrectness'] === true
+  )
+    updatePrices(client)
   // client.on('firstPoolsUpdate', () =>{
   //   updatePrices(client)
   // })
   client.start()
   Sentry.init({
+    sampleRate: 1,
     dsn: SENTRY_DSN,
     environment: SENTRY_ENVIRONMENT,
     integrations: [
       // enable HTTP calls tracing
       new Sentry.Integrations.Http({
+        breadcrumbs: true,
         tracing: true,
       }),
       // enable Express.js middleware tracing
@@ -50,10 +62,36 @@ async function start() {
       }),
     ],
     // Performance Monitoring
-    tracesSampleRate: 0.1, // Capture 10% of the transactions, reduce in production!,
+    enableTracing: true,
+    tracesSampleRate: 1,
   })
 
-  requestStatistics.start()
+  Logger.setLogsExternalHandler(
+    (
+      msg: string,
+      level: LogsMessageLevel,
+      context?: string,
+      trace_id?: string,
+    ) => {
+      Sentry.captureMessage(
+        msg,
+        context === undefined
+          ? level
+          : {
+              level,
+              contexts: {
+                trace: {
+                  data: { context },
+                  trace_id: trace_id ?? '0',
+                  span_id: '0',
+                },
+              },
+            },
+      )
+    },
+  )
+
+  swapRequestStatistics.start()
 
   // RequestHandler creates a separate execution context, so that all
   // transactions/spans/breadcrumbs are isolated across requests
@@ -79,6 +117,9 @@ async function start() {
   })
   app.get(`/swap/v4/${CHAIN_ID}`, (req, res) => {
     return swapV4(client)(req, res)
+  })
+  app.get(`/swap/v4_2/${CHAIN_ID}`, (req, res) => {
+    return swapV4_2(client)(req, res)
   })
 
   app.get(`/token/v1/${CHAIN_ID}/:address`, tokenHandler(client))

@@ -1,6 +1,6 @@
 'use client'
 
-import { watchAccount, watchNetwork } from '@wagmi/core'
+import { watchAccount } from '@wagmi/core'
 import React, {
   FC,
   ReactNode,
@@ -11,7 +11,10 @@ import React, {
   useMemo,
   useState,
 } from 'react'
-import { Signature } from 'viem'
+import { SignTypedDataParameters, type Signature as _Signature } from 'viem'
+import { useConfig } from 'wagmi'
+
+type Signature = _Signature & Partial<SignTypedDataParameters>
 
 type CheckerContext = {
   setApproved: (tag: string, approved: boolean) => void
@@ -65,17 +68,19 @@ const CheckerProvider: FC<ProviderProps> = ({ children }) => {
     [],
   )
 
+  const config = useConfig()
+
   // Reset state when address/wallet changes
   useEffect(() => {
     console.log('reset state', initialState)
-    const unwatchAccountListener = watchAccount(() => setState(initialState))
-    const unwatchChainListener = watchNetwork(() => setState(initialState))
+    const unwatchAccountListener = watchAccount(config, {
+      onChange: () => setState(initialState),
+    })
 
     return () => {
       unwatchAccountListener()
-      unwatchChainListener()
     }
-  }, [])
+  }, [config])
 
   return (
     <CheckerContext.Provider

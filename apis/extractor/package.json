@@ -24,18 +24,19 @@
     "dev": "tsc -w",
     "load-testing": "artillery run test/load.yml",
     "simulate": "ts-node --skipProject ./test/requestSimulation.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "start-debug": "node --inspect-brk dist/index.js"
   },
   "dependencies": {
-    "@sentry/node": "7.101.1",
+    "@sentry/node": "7.110.0",
     "@sushiswap/extractor": "workspace:*",
-    "@wagmi/core": "1.4.13",
+    "@wagmi/core": "2.6.17",
     "cors": "2.8.5",
     "dotenv": "16.3.1",
     "express": "4.18.2",
     "sushi": "workspace:*",
-    "viem": "1.21.4",
-    "wagmi": "1.4.13",
+    "viem": "2.8.14",
+    "wagmi": "2.5.20",
     "zod": "3.21.4"
   },
   "devDependencies": {

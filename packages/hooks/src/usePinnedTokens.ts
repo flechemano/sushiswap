@@ -1,3 +1,5 @@
+'use client'
+
 import { getAddress as _getAddress, isAddress } from '@ethersproject/address'
 import { useCallback, useMemo } from 'react'
 import { ChainId } from 'sushi/chain'
@@ -14,6 +16,7 @@ import {
   GNO,
   MATIC,
   MIM,
+  SKL,
   SUSHI,
   USDB,
   USDC,
@@ -45,10 +48,15 @@ export const DEFAULT_BASES = {
     USDT[ChainId.ETHEREUM],
     DAI[ChainId.ETHEREUM],
   ],
-  [ChainId.ROPSTEN]: [],
-  [ChainId.RINKEBY]: [],
-  [ChainId.GÖRLI]: [],
-  [ChainId.KOVAN]: [],
+  [ChainId.SEPOLIA]: [
+    Native.onChain(ChainId.SEPOLIA),
+    WNATIVE[ChainId.SEPOLIA],
+    USDC[ChainId.SEPOLIA],
+  ],
+  // [ChainId.ROPSTEN]: [],
+  // [ChainId.RINKEBY]: [],
+  // [ChainId.GÖRLI]: [],
+  // [ChainId.KOVAN]: [],
   [ChainId.GNOSIS]: [
     Native.onChain(ChainId.GNOSIS),
     WNATIVE[ChainId.GNOSIS],
@@ -138,7 +146,7 @@ export const DEFAULT_BASES = {
     USDT[ChainId.HARMONY],
     DAI[ChainId.HARMONY],
   ],
-  [ChainId.HARMONY_TESTNET]: [],
+  // [ChainId.HARMONY_TESTNET]: [],
   [ChainId.HECO]: [
     Native.onChain(ChainId.HECO),
     WNATIVE[ChainId.HECO],
@@ -147,7 +155,7 @@ export const DEFAULT_BASES = {
     USDT[ChainId.HECO],
     DAI[ChainId.HECO],
   ],
-  [ChainId.HECO_TESTNET]: [],
+  // [ChainId.HECO_TESTNET]: [],
   [ChainId.OKEX]: [
     Native.onChain(ChainId.OKEX),
     WNATIVE[ChainId.OKEX],
@@ -156,7 +164,7 @@ export const DEFAULT_BASES = {
     USDT[ChainId.OKEX],
     DAI[ChainId.OKEX],
   ],
-  [ChainId.OKEX_TESTNET]: [],
+  // [ChainId.OKEX_TESTNET]: [],
   [ChainId.CELO]: [
     Native.onChain(ChainId.CELO),
     // WNATIVE[ChainId.CELO],
@@ -317,6 +325,13 @@ export const DEFAULT_BASES = {
       address: '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA',
     }),
     USDC[ChainId.BASE],
+    new Token({
+      chainId: ChainId.BASE,
+      symbol: 'OX',
+      name: 'OX Coin',
+      decimals: 18,
+      address: '0xba0Dda8762C24dA9487f5FA026a9B64b695A07Ea',
+    }),
   ],
   [ChainId.SCROLL]: [
     Native.onChain(ChainId.SCROLL),
@@ -346,8 +361,19 @@ export const DEFAULT_BASES = {
     USDC[ChainId.CRONOS],
   ],
   [ChainId.BLAST]: [Native.onChain(ChainId.BLAST), USDB[ChainId.BLAST]],
+  [ChainId.SKALE_EUROPA]: [
+    SKL,
+    USDC[ChainId.SKALE_EUROPA],
+    WETH9[ChainId.SKALE_EUROPA],
+  ],
+  [ChainId.ROOTSTOCK]: [
+    Native.onChain(ChainId.ROOTSTOCK),
+    WNATIVE[ChainId.ROOTSTOCK],
+    WETH9[ChainId.ROOTSTOCK],
+    USDT[ChainId.ROOTSTOCK],
+  ],
   // [ChainId.SEPOLIA]: [Native.onChain(ChainId.SEPOLIA), WNATIVE[ChainId.SEPOLIA]],
-} as const
+} as const satisfies Record<ChainId, Readonly<(Token | Native)[]>>
 
 // const DEFAULT_BASES_IDS = Object.entries(DEFAULT_BASES).reduce<
 //   Record<string, string[]>

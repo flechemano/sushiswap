@@ -1,5 +1,5 @@
 import { ChainId } from '../chain/index.js'
-import { MUSD, Token, USDB } from '../currency/index.js'
+import { MUSD, SKL, Token, USDB, USDP } from '../currency/index.js'
 import {
   AAVE,
   BUSD,
@@ -51,8 +51,8 @@ export const BASES_TO_CHECK_TRADES_AGAINST: {
     LINK[ChainId.ETHEREUM],
     SUSHI[ChainId.ETHEREUM],
   ],
-  [ChainId.RINKEBY]: [WNATIVE[ChainId.RINKEBY], USDC[ChainId.RINKEBY]],
-  [ChainId.KOVAN]: [WNATIVE[ChainId.KOVAN], USDC[ChainId.KOVAN]],
+  // [ChainId.RINKEBY]: [WNATIVE[ChainId.RINKEBY], USDC[ChainId.RINKEBY]],
+  // [ChainId.KOVAN]: [WNATIVE[ChainId.KOVAN], USDC[ChainId.KOVAN]],
   [ChainId.POLYGON]: [
     WNATIVE[ChainId.POLYGON],
     WETH9[ChainId.POLYGON],
@@ -64,6 +64,13 @@ export const BASES_TO_CHECK_TRADES_AGAINST: {
     QUICK[ChainId.POLYGON],
     LINK[ChainId.POLYGON],
     AAVE[ChainId.POLYGON],
+    new Token({
+      address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+      chainId: ChainId.POLYGON,
+      decimals: 6,
+      symbol: 'USD Coin',
+      name: 'USDC.e',
+    }),
   ],
   [ChainId.POLYGON_TESTNET]: [
     WNATIVE[ChainId.POLYGON_TESTNET],
@@ -472,4 +479,17 @@ export const BASES_TO_CHECK_TRADES_AGAINST: {
     USDC[ChainId.CRONOS],
   ],
   [ChainId.BLAST]: [WNATIVE[ChainId.BLAST], USDB[ChainId.BLAST], MUSD],
+  [ChainId.SKALE_EUROPA]: [
+    SKL,
+    USDT[ChainId.SKALE_EUROPA],
+    USDC[ChainId.SKALE_EUROPA],
+    DAI[ChainId.SKALE_EUROPA],
+    USDP[ChainId.SKALE_EUROPA],
+    WETH9[ChainId.SKALE_EUROPA],
+  ],
+  [ChainId.ROOTSTOCK]: [
+    WNATIVE[ChainId.ROOTSTOCK],
+    WETH9[ChainId.ROOTSTOCK],
+    USDT[ChainId.ROOTSTOCK],
+  ],
 }

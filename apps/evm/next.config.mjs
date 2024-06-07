@@ -14,9 +14,17 @@ const nextConfig = {
       fullUrl: true,
     },
   },
+  experimental: {
+    testProxy: true,
+  },
   transpilePackages: ['@sushiswap/wagmi'],
   async redirects() {
     return [
+      {
+        source: '/',
+        permanent: true,
+        destination: '/swap',
+      },
       {
         source: '/discord{/}?',
         permanent: true,

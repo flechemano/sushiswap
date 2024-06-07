@@ -11,6 +11,7 @@ import { LiquidityProviders, PoolCode } from 'sushi/router'
 import { Address, Log, PublicClient } from 'viem'
 import { Counter } from './Counter.js'
 import { LogFilter2 } from './LogFilter2.js'
+import { Logger, safeSerialize } from './Logger.js'
 import { MultiCallAggregator } from './MulticallAggregator.js'
 import { PermanentCache } from './PermanentCache.js'
 import {
@@ -20,7 +21,6 @@ import {
 } from './QualityChecker.js'
 import { TokenManager } from './TokenManager.js'
 import { UniV3EventsAbi, UniV3PoolWatcher } from './UniV3PoolWatcher.js'
-import { warnLog } from './WarnLog.js'
 
 export type FeeSpacingMap = Record<number, number>
 
@@ -68,6 +68,7 @@ export class UniV3Extractor {
   multiCallAggregator: MultiCallAggregator
   tokenManager: TokenManager
   poolMap: Map<Address, UniV3PoolWatcher> = new Map()
+  poolMapUpdated: Map<string, UniV3PoolWatcher> = new Map()
   emptyAddressSet: Set<Address> = new Set()
   poolPermanentCache: PermanentCache<PoolCacheRecord>
   otherFactoryPoolSet: Set<Address> = new Set()
@@ -115,18 +116,33 @@ export class UniV3Extractor {
       (arg: QualityCheckerCallBackArg) => {
         const addr = arg.ethalonPool.address.toLowerCase() as Address
         if (arg.ethalonPool !== this.poolMap.get(addr)) return false // checked pool was replaced during checking
-        if (arg.correctPool) this.poolMap.set(addr, arg.correctPool)
-        this.consoleLog(
-          `Pool ${arg.ethalonPool.address} quality check: ${arg.status} ` +
-            `${arg.correctPool ? 'pool was updated ' : ''}` +
-            `(${this.qualityChecker.totalMatchCounter}/${this.qualityChecker.totalCheckCounter})`,
-        )
+        if (arg.correctPool) {
+          this.poolMap.set(addr, arg.correctPool)
+          this.poolMapUpdated.set(addr, arg.correctPool)
+          arg.correctPool.on('PoolCodeWasChanged', (w) => {
+            this.poolMapUpdated.set(
+              (w as UniV3PoolWatcher).address.toLowerCase(),
+              w,
+            )
+          })
+        }
         if (
           arg.status !== PoolSyncState.Match &&
           arg.status !== PoolSyncState.ReservesMismatch
         )
-          warnLog(
+          Logger.error(
             this.multiCallAggregator.chainId,
+            `Pool ${arg.ethalonPool.address} quality check: ${arg.status} ` +
+              `${arg.correctPool ? 'pool was updated ' : ''}` +
+              `(${this.qualityChecker.totalMatchCounter}/${this.qualityChecker.totalCheckCounter})`,
+            safeSerialize({
+              oldPool: arg.ethalonPool.debugState(),
+              newPool: arg.correctPool?.debugState(),
+            }),
+            false,
+          )
+        else
+          this.consoleLog(
             `Pool ${arg.ethalonPool.address} quality check: ${arg.status} ` +
               `${arg.correctPool ? 'pool was updated ' : ''}` +
               `(${this.qualityChecker.totalMatchCounter}/${this.qualityChecker.totalCheckCounter})`,
@@ -151,14 +167,15 @@ export class UniV3Extractor {
             this.lastProcessdBlock = Number(
               logs[logs.length - 1].blockNumber || 0,
             )
-        } catch (_e) {
-          warnLog(
+        } catch (e) {
+          Logger.error(
             this.multiCallAggregator.chainId,
             `Block ${blockNumber} log process error`,
+            e,
           )
         }
       } else {
-        warnLog(
+        Logger.error(
           this.multiCallAggregator.chainId,
           'Log collecting failed. Pools refetching',
         )
@@ -195,14 +212,24 @@ export class UniV3Extractor {
       const promises = Array.from(cachedPools.values())
         .map((p) => this.addPoolWatching(p, 'cache', false))
         .filter((w) => w !== undefined)
-        .map((w) => (w as UniV3PoolWatcher).statusAll())
-      Promise.allSettled(promises).then((_) => {
+        .map((w) => (w as UniV3PoolWatcher).downloadFinished())
+      Promise.allSettled(promises).then((promises) => {
+        let failed = 0
+        promises.forEach((p) => {
+          if (p.status === 'rejected') ++failed
+        })
         this.started = true
         this.consoleLog(
-          `ExtractorV3 is ready (${Math.round(
-            performance.now() - startTime,
-          )}ms)`,
+          `ExtractorV3 is ready, ${failed}/${
+            promises.length
+          } pools failed (${Math.round(performance.now() - startTime)}ms)`,
         )
+        if (failed > 0) {
+          Logger.error(
+            this.multiCallAggregator.chainId,
+            `${failed}/${promises.length} pools load failed during ExtractorV3 starting`,
+          )
+        }
       })
       this.consoleLog(`${cachedPools.size} pools were taken from cache`)
       this.consoleLog(
@@ -221,10 +248,11 @@ export class UniV3Extractor {
         return pool.processLog(l)
       } else this.addPoolByAddress(l.address)
       return 'UnknPool'
-    } catch (_e) {
-      warnLog(
+    } catch (e) {
+      Logger.error(
         this.multiCallAggregator.chainId,
         `Log processing for pool ${l.address} throwed an exception`,
+        e,
       )
       return 'Exception!!!'
     }
@@ -277,7 +305,8 @@ export class UniV3Extractor {
       this.taskCounter,
     )
     watcher.updatePoolState()
-    this.poolMap.set(p.address.toLowerCase() as Address, watcher) // lowercase because incoming events have lowcase addresses ((
+    this.poolMap.set(addrL, watcher) // lowercase because incoming events have lowcase addresses ((
+    this.poolMapUpdated.set(addrL, watcher)
     if (addToCache)
       this.poolPermanentCache.add({
         address: expectedPoolAddress,
@@ -296,6 +325,9 @@ export class UniV3Extractor {
           }/${this.poolMap.size + this.emptyAddressSet.size}`,
         )
       }
+    })
+    watcher.on('PoolCodeWasChanged', (w) => {
+      this.poolMapUpdated.set((w as UniV3PoolWatcher).address.toLowerCase(), w)
     })
     return watcher
   }
@@ -473,6 +505,15 @@ export class UniV3Extractor {
     return Array.from(this.poolMap.values())
       .map((p) => p.getPoolCode())
       .filter((pc) => pc !== undefined) as PoolCode[]
+  }
+
+  // side effect: updated pools list is cleared
+  getUpdatedPoolCodes(): PoolCode[] {
+    const res = Array.from(this.poolMapUpdated.values())
+      .map((p) => p.getPoolCode())
+      .filter((pc) => pc !== undefined) as PoolCode[]
+    res.forEach((p) => this.poolMapUpdated.delete(p.pool.address.toLowerCase()))
+    return res
   }
 
   // only for testing

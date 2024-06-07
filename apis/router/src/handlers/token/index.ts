@@ -1,6 +1,11 @@
 import { Request, Response } from 'express'
 import { Type } from 'sushi/currency'
+import { isAddressFast } from 'sushi/serializer'
 import { ExtractorClient } from '../../ExtractorClient.js'
+import { RequestStatistics } from '../../RequestStatistics.js'
+
+const tokenStatistics = new RequestStatistics('Tokens', 60_000) // update log once per min
+tokenStatistics.start()
 
 function handler(client: ExtractorClient) {
   return async (req: Request, res: Response) => {
@@ -8,13 +13,18 @@ function handler(client: ExtractorClient) {
     // console.log('HTTP: GET /token/:chainId/:address')
     const address = req.params['address']
     if (address === undefined) return res.status(422).send('No address param')
+    if (!isAddressFast(address))
+      return res.status(422).send(`Incorrect address ${address}`)
 
     let token: Type | undefined | Promise<Type | undefined> =
       client.getToken(address)
     if (token instanceof Promise) token = await token
-    if (token === undefined)
+    if (token === undefined) {
+      tokenStatistics.addUnKnownRequest()
       return res.status(422).send(`Unknown token ${address}`)
+    }
 
+    tokenStatistics.addKnownRequest()
     return res.json({
       chainId: token.chainId,
       address: token.isNative
